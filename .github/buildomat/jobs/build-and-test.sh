@@ -24,7 +24,9 @@ banner test
 
 ptime -m cargo test --verbose
 
-banner test (miri)
+banner miri
 
+# XXX what's the proper way to do this?
+rustup component add --toolchain nightly-x86_64-unknown-illumos miri
 ptime -m cargo +nightly miri test
 
