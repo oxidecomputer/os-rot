@@ -29,16 +29,47 @@ const MAX_FLEXIBLE_BYTES: usize = 16 * 1024 * 1024;
 ///
 /// Implementers must guarantee that:
 ///
-/// - `Self` is a DST whose only unsized field is a trailing `[Self::Item]`
-///   prefixed by a `u32` count at offset 0, the field that
+/// - `Self` is a `#[repr(C)]` DST whose only unsized field is a trailing
+///   `[Self::Item]` prefixed by a `u32` count at offset 0, the field that
 ///   [`alloc_flexible_struct`] writes `capacity` into. Its layout must match
 ///   `Layout::new::<u32>().extend(Layout::array::<Self::Item>(n)).pad_to_align()`
 ///   for every `n`, so the `Box`'s drop frees the same layout that was
 ///   allocated.
-/// - [`Self::from_slice_ptr`] reinterprets the input pointer as `Self`
-///   unchanged in both address and length metadata (a plain `p as *mut Self`
-///   cast). This metadata is required by `Box` and its drop method to recompute
-///   the allocation size, so any other value is undefined behavior.
+/// - [`Self::from_slice_ptr`] reinterprets the input pointer as `Self`. Both
+///   pointers are "fat pointers" that contain an address and length so rust
+///   allows us to "cast" between them, however attempting to use one type as
+///   the other would be undefined behavior. This "fat pointer"/layout is used
+///   by `Box` and its drop method. To better visualize this layout consider the
+///   following:
+///
+/// ```text
+///  *mut [Self::Item]
+///     ┌── fat pointer ─┐
+///  ┌───────────┬──────────────┐
+///  │ data_ptr  │  len: usize  │
+///  └───────────┴──────────────┘
+///          │
+///          ▼
+///          ┌──────────┬──────────┬── ... ──┬─────────────┐
+///          │  Item[0] │  Item[1] │         │ Item[len-1] │
+///          └──────────┴──────────┴── ... ──┴─────────────┘
+///
+///     │
+///     │ `p as *mut Self` cast
+///     ▼
+///
+///  *mut Self
+///     ┌── fat pointer ─┐
+///  ┌───────────┬──────────────┐
+///  │ data_ptr  │  len: usize  │
+///  └───────────┴──────────────┘
+///          │
+///          ▼
+///          ┌─────────────────────┬─────────┬─────────┬─ ... ─┬─────────────┐
+///          │         u32         │ Item[0] │ Item[1] │       │ Item[len-1] │
+///          └─────────────────────┴─────────┴─────────┴─ ... ─┴─────────────┘
+///          └──size_of::<u32>()──┘└──────── len * size_of::<Item>() ────────┘
+/// ```
 pub(crate) unsafe trait FlexibleArrayMember {
     /// Element type of the trailing flexible array member.
     type Item;
